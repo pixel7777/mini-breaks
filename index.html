@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Breaks</title>
+<style>
+:root {
+  --bg: #f6fbfb;
+  --card: #ffffff;
+  --teal: #2a9d8f;
+  --teal-hover: #228075;
+  --teal-active: #1b6d62;
+  --teal-soft: #a8dadc;
+  --teal-soft-bg: #eaf6f7;
+  --teal-dark: #1f3a3d;
+  --text: #1f3a3d;
+  --text-mute: #5a7374;
+  --border: #dceeee;
+  --border-edit: #2a9d8f;
+  --shadow: 0 1px 3px rgba(31, 58, 61, 0.06);
+  --danger: #c45a4f;
+  --danger-bg: #fce8e6;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.app { display: flex; min-height: 100vh; }
+.app.is-edit-mode { background: var(--teal-soft-bg); }
+
+/* ───── Sidebar ───── */
+
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--teal-dark);
+  letter-spacing: 0.5px;
+}
+
+.sidebar-buttons { display: flex; gap: 8px; }
+
+#reset-btn {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--teal);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+#reset-btn:hover { background: var(--teal-hover); }
+#reset-btn:active { background: var(--teal-active); }
+
+#edit-btn {
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--teal);
+  border: 1px solid var(--teal);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+#edit-btn:hover { background: var(--teal-soft-bg); }
+.app.is-edit-mode #edit-btn { background: var(--teal); color: white; }
+
+.activities {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.activity:hover { background: var(--bg); }
+.activity.is-editing {
+  background: var(--bg);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-edit);
+}
+
+.activity-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.activity-label {
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-boxes { display: flex; gap: 6px; flex-shrink: 0; }
+
+.row-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.row-controls input[type="text"] { flex: 1; min-width: 0; }
+.row-controls input[type="number"] { width: 56px; }
+
+.add-row-btn,
+.add-tile-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--teal);
+  border: 1px dashed var(--teal);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.add-row-btn:hover,
+.add-tile-btn:hover { background: var(--teal-soft-bg); }
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.io-btn {
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text-mute);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.io-btn:hover { background: var(--bg); color: var(--text); }
+
+/* ───── Checkbox ───── */
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--teal);
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* ───── Inputs ───── */
+
+input[type="text"],
+input[type="number"] {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+input[type="text"]:focus,
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+input[type="text"].is-invalid { border-color: var(--danger); }
+
+/* ───── Main grid ───── */
+
+.main {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 1700px;
+  margin: 0 auto;
+}
+
+.tile {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.tile.is-editing { border: 1px dashed var(--border-edit); }
+
+.tile-edit-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--teal-soft-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tile-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--teal-dark);
+}
+
+.tile-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+}
+.tile-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.tile-frame.tile-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-mute);
+  font-size: 13px;
+  font-style: italic;
+  padding: 16px;
+  text-align: center;
+}
+
+.tile-edit-body {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg);
+}
+.tile-edit-body input[type="text"] { width: 100%; font-size: 13px; }
+.tile-edit-body .error-text {
+  font-size: 12px;
+  color: var(--danger);
+  min-height: 1em;
+}
+
+/* ───── Edit-mode buttons ───── */
+
+.arrow-btn,
+.delete-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  color: var(--text);
+}
+.arrow-btn:hover,
+.delete-btn:hover { background: white; }
+.arrow-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.delete-btn {
+  margin-left: auto;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.delete-btn:hover { background: var(--danger-bg); }
+
+/* ───── Responsive ───── */
+
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <aside class="sidebar">
+    <h1 class="sidebar-title">Mini Breaks</h1>
+    <div class="sidebar-buttons">
+      <button id="reset-btn" type="button">Reset checkboxes</button>
+      <button id="edit-btn" type="button">Edit</button>
+    </div>
+    <ul class="activities" id="activities"></ul>
+    <div id="add-row-container"></div>
+    <div class="sidebar-footer">
+      <button class="io-btn" id="export-btn" type="button">Export config</button>
+      <button class="io-btn" id="import-btn" type="button">Import config</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="grid" id="grid"></div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const STORAGE_PREFIX = 'mini-breaks:';
+  const CONFIG_KEY = STORAGE_PREFIX + 'config';
+  const STATE_KEY = STORAGE_PREFIX + 'state';
+
+  const DEFAULT_CONFIG = {
+    version: 1,
+    tiles: [
+      {id: 't-chair-stretch',     label: 'Chair Stretch',     url: 'https://www.youtube-nocookie.com/embed/PFqs_pb52Kk?list=PL66gc-1mx8BCUokovPj-nLeXgZBdb2uRi'},
+      {id: 't-chair-exercise',    label: 'Chair Exercise',    url: 'https://www.youtube-nocookie.com/embed/EAat9edX4h0?list=PL66gc-1mx8BC1v_MseLylA5hvv9bIlTU8'},
+      {id: 't-mini-meditate',     label: 'Mini Meditate',     url: 'https://www.youtube-nocookie.com/embed/inpok4MKVLM?list=PL66gc-1mx8BAi7B6eu46cfNqfpEydptdj'},
+      {id: 't-deskdweller-rehab', label: 'Deskdweller Rehab', url: 'https://www.youtube-nocookie.com/embed/6lJBZCRlFnI?list=PL66gc-1mx8BBY-sg8VXiD68Twy-qaIxGE'},
+      {id: 't-snoring-exercise',  label: 'Snoring Exercise',  url: 'https://www.youtube-nocookie.com/embed/DGrw47GYwF0?list=PL66gc-1mx8BBbPMJGi524UsgM99kMNjN8'},
+      {id: 't-face-exercise',     label: 'Face Exercise',     url: 'https://www.youtube-nocookie.com/embed/oJIk2PyukjY?list=PL66gc-1mx8BCaM7I8wt7d2fx5kOhVW79F'},
+      {id: 't-voice-exercise',    label: 'Voice Exercise',    url: 'https://www.youtube-nocookie.com/embed/Xa72p_Qdbm8?list=PL66gc-1mx8BBNgclC1cKYSYZJ3JRo8mgJ'},
+      {id: 't-placeholder-1',     label: 'Placeholder',       url: ''},
+      {id: 't-placeholder-2',     label: 'Placeholder',       url: ''}
+    ],
+    sidebar: [
+      {id: 's-morning-routine',   label: 'Morning Routine',   count: 1},
+      {id: 's-daily-page',        label: 'Daily Page',        count: 1},
+      {id: 's-stand-and-stretch', label: 'Stand and Stretch', count: 3},
+      {id: 's-hydrate',           label: 'Hydrate',           count: 3},
+      {id: 's-croatian-lesson',   label: 'Croatian Lesson',   count: 3},
+      {id: 's-do-a-chore',        label: 'Do a Chore',        count: 1},
+      {id: 's-journal',           label: 'Journal',           count: 1}
+    ]
+  };
+
+  let config = loadConfig();
+  let state = loadState();
+  let isEditing = false;
+
+  // ─── Persistence ───
+
+  function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  function loadConfig() {
+    try {
+      const raw = localStorage.getItem(CONFIG_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.version === 1 && Array.isArray(parsed.tiles) && Array.isArray(parsed.sidebar)) {
+          return parsed;
+        }
+      }
+    } catch (e) { /* fall through */ }
+    return deepClone(DEFAULT_CONFIG);
+  }
+
+  function saveConfig() {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STATE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) { /* fall through */ }
+    return {};
+  }
+
+  function saveState() {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  }
+
+  function resetState() {
+    state = {};
+    localStorage.removeItem(STATE_KEY);
+  }
+
+  function newId(prefix) {
+    return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  // ─── YouTube URL normalization ───
+  // Accepts watch?v=, playlist?list=, embed/VID, embed/videoseries, youtu.be — returns
+  // the youtube-nocookie embed form, or null if the URL doesn't parse as YouTube.
+
+  function normalizeYouTubeUrl(input) {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return '';
+
+    let url;
+    try { url = new URL(trimmed); } catch (e) { return null; }
+
+    const host = url.hostname.toLowerCase();
+    let videoId = '', listId = '';
+
+    const isYouTube = host === 'youtube.com' || host === 'www.youtube.com' ||
+                      host === 'youtube-nocookie.com' || host === 'www.youtube-nocookie.com' ||
+                      host === 'm.youtube.com';
+    const isYoutuBe = host === 'youtu.be' || host === 'www.youtu.be';
+
+    if (isYouTube) {
+      if (url.pathname === '/watch') {
+        videoId = url.searchParams.get('v') || '';
+        listId = url.searchParams.get('list') || '';
+      } else if (url.pathname === '/playlist') {
+        listId = url.searchParams.get('list') || '';
+      } else if (url.pathname.startsWith('/embed/')) {
+        const after = url.pathname.slice('/embed/'.length);
+        if (after === 'videoseries') {
+          listId = url.searchParams.get('list') || '';
+        } else {
+          videoId = after;
+          listId = url.searchParams.get('list') || '';
+        }
+      } else {
+        return null;
+      }
+    } else if (isYoutuBe) {
+      videoId = url.pathname.slice(1);
+      listId = url.searchParams.get('list') || '';
+    } else {
+      return null;
+    }
+
+    if (videoId && listId) return `https://www.youtube-nocookie.com/embed/${videoId}?list=${listId}`;
+    if (videoId)          return `https://www.youtube-nocookie.com/embed/${videoId}`;
+    if (listId)           return `https://www.youtube-nocookie.com/embed/videoseries?list=${listId}`;
+    return null;
+  }
+
+  // ─── Render ───
+
+  function render() {
+    document.getElementById('app').className = 'app' + (isEditing ? ' is-edit-mode' : '');
+    document.getElementById('edit-btn').textContent = isEditing ? 'Done editing' : 'Edit';
+    renderSidebar();
+    renderGrid();
+  }
+
+  function renderSidebar() {
+    const list = document.getElementById('activities');
+    list.innerHTML = '';
+    config.sidebar.forEach((row, idx) => list.appendChild(buildActivityRow(row, idx)));
+
+    const addContainer = document.getElementById('add-row-container');
+    addContainer.innerHTML = '';
+    if (isEditing) {
+      const btn = document.createElement('button');
+      btn.className = 'add-row-btn';
+      btn.type = 'button';
+      btn.textContent = '+ Add sidebar row';
+      btn.addEventListener('click', () => {
+        config.sidebar.push({id: newId('s'), label: 'New row', count: 1});
+        saveConfig();
+        render();
+      });
+      addContainer.appendChild(btn);
+    }
+  }
+
+  function buildActivityRow(row, idx) {
+    const li = document.createElement('li');
+    li.className = 'activity' + (isEditing ? ' is-editing' : '');
+    li.dataset.id = row.id;
+
+    if (!isEditing) {
+      const main = document.createElement('div');
+      main.className = 'activity-main';
+      const label = document.createElement('span');
+      label.className = 'activity-label';
+      label.textContent = row.label;
+      main.appendChild(label);
+
+      const boxes = document.createElement('span');
+      boxes.className = 'activity-boxes';
+      for (let i = 1; i <= row.count; i++) {
+        boxes.appendChild(makeStateCheckbox(`${row.id}:${i}`));
+      }
+
+      li.appendChild(main);
+      li.appendChild(boxes);
+    } else {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'row-controls';
+      const up = arrowBtn('↑', () => moveSidebar(idx, -1));
+      up.disabled = idx === 0;
+      const down = arrowBtn('↓', () => moveSidebar(idx, 1));
+      down.disabled = idx === config.sidebar.length - 1;
+      const del = deleteBtn(() => {
+        if (confirm(`Delete "${row.label}"?`)) {
+          config.sidebar.splice(idx, 1);
+          saveConfig();
+          render();
+        }
+      });
+      toolbar.appendChild(up);
+      toolbar.appendChild(down);
+      toolbar.appendChild(del);
+      li.appendChild(toolbar);
+
+      const inputs = document.createElement('div');
+      inputs.className = 'row-controls';
+      const labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.value = row.label;
+      labelInput.addEventListener('change', () => {
+        config.sidebar[idx].label = labelInput.value.trim() || 'Unnamed';
+        saveConfig();
+      });
+      const countInput = document.createElement('input');
+      countInput.type = 'number';
+      countInput.min = '1';
+      countInput.max = '9';
+      countInput.value = row.count;
+      countInput.title = 'Number of checkboxes';
+      countInput.addEventListener('change', () => {
+        const n = Math.max(1, Math.min(9, parseInt(countInput.value, 10) || 1));
+        config.sidebar[idx].count = n;
+        countInput.value = n;
+        saveConfig();
+      });
+      inputs.appendChild(labelInput);
+      inputs.appendChild(countInput);
+      li.appendChild(inputs);
+    }
+    return li;
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    config.tiles.forEach((tile, idx) => grid.appendChild(buildTile(tile, idx)));
+
+    if (isEditing) {
+      const addTile = document.createElement('button');
+      addTile.className = 'add-tile-btn';
+      addTile.type = 'button';
+      addTile.textContent = '+ Add tile';
+      addTile.style.gridColumn = '1 / -1';
+      addTile.addEventListener('click', () => {
+        config.tiles.push({id: newId('t'), label: 'New tile', url: ''});
+        saveConfig();
+        render();
+      });
+      grid.appendChild(addTile);
+    }
+  }
+
+  function buildTile(tile, idx) {
+    const div = document.createElement('div');
+    div.className = 'tile' + (isEditing ? ' is-editing' : '');
+    div.dataset.id = tile.id;
+
+    if (isEditing) {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'tile-edit-toolbar';
+      const up = arrowBtn('↑', () => moveTile(idx, -1));
+      up.disabled = idx === 0;
+      const down = arrowBtn('↓', () => moveTile(idx, 1));
+      down.disabled = idx === config.tiles.length - 1;
+      const del = deleteBtn(() => {
+        if (confirm(`Delete "${tile.label}"?`)) {
+          config.tiles.splice(idx, 1);
+          saveConfig();
+          render();
+        }
+      });
+      toolbar.appendChild(up);
+      toolbar.appendChild(down);
+      toolbar.appendChild(del);
+      div.appendChild(toolbar);
+    }
+
+    const header = document.createElement('header');
+    header.className = 'tile-header';
+    if (!isEditing) {
+      const title = document.createElement('span');
+      title.className = 'tile-title';
+      title.textContent = tile.label;
+      header.appendChild(title);
+      header.appendChild(makeStateCheckbox(`${tile.id}:1`));
+    } else {
+      const labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.value = tile.label;
+      labelInput.addEventListener('change', () => {
+        config.tiles[idx].label = labelInput.value.trim() || 'Unnamed';
+        saveConfig();
+      });
+      header.appendChild(labelInput);
+    }
+    div.appendChild(header);
+
+    if (isEditing) {
+      const editBody = document.createElement('div');
+      editBody.className = 'tile-edit-body';
+      const urlInput = document.createElement('input');
+      urlInput.type = 'text';
+      urlInput.placeholder = 'Paste a YouTube URL (or leave empty)';
+      urlInput.value = tile.url;
+      const errSpan = document.createElement('div');
+      errSpan.className = 'error-text';
+
+      urlInput.addEventListener('change', () => {
+        const v = urlInput.value.trim();
+        if (!v) {
+          config.tiles[idx].url = '';
+          urlInput.classList.remove('is-invalid');
+          errSpan.textContent = '';
+          saveConfig();
+          return;
+        }
+        const normalized = normalizeYouTubeUrl(v);
+        if (normalized === null) {
+          urlInput.classList.add('is-invalid');
+          errSpan.textContent = "Couldn't parse that as a YouTube URL. Try a youtube.com/watch?v=… or playlist link.";
+          return;
+        }
+        config.tiles[idx].url = normalized;
+        urlInput.value = normalized;
+        urlInput.classList.remove('is-invalid');
+        errSpan.textContent = '';
+        saveConfig();
+      });
+
+      editBody.appendChild(urlInput);
+      editBody.appendChild(errSpan);
+      div.appendChild(editBody);
+    } else {
+      const frame = document.createElement('div');
+      frame.className = 'tile-frame' + (tile.url ? '' : ' tile-empty');
+      if (tile.url) {
+        const iframe = document.createElement('iframe');
+        iframe.src = tile.url;
+        iframe.title = tile.label;
+        iframe.loading = 'lazy';
+        iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+        iframe.allow = 'accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+        frame.appendChild(iframe);
+      } else {
+        const span = document.createElement('span');
+        span.textContent = '(no playlist set)';
+        frame.appendChild(span);
+      }
+      div.appendChild(frame);
+    }
+
+    return div;
+  }
+
+  // ─── Render helpers ───
+
+  function makeStateCheckbox(id) {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.id = id;
+    cb.checked = !!state[id];
+    cb.addEventListener('change', () => {
+      if (cb.checked) state[id] = true;
+      else delete state[id];
+      saveState();
+    });
+    return cb;
+  }
+
+  function arrowBtn(label, onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'arrow-btn';
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function deleteBtn(onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'delete-btn';
+    btn.type = 'button';
+    btn.textContent = '🗑';
+    btn.title = 'Delete';
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function moveTile(idx, delta) {
+    const target = idx + delta;
+    if (target < 0 || target >= config.tiles.length) return;
+    const tmp = config.tiles[idx];
+    config.tiles[idx] = config.tiles[target];
+    config.tiles[target] = tmp;
+    saveConfig();
+    render();
+  }
+
+  function moveSidebar(idx, delta) {
+    const target = idx + delta;
+    if (target < 0 || target >= config.sidebar.length) return;
+    const tmp = config.sidebar[idx];
+    config.sidebar[idx] = config.sidebar[target];
+    config.sidebar[target] = tmp;
+    saveConfig();
+    render();
+  }
+
+  // ─── Top-level handlers ───
+
+  function toggleEdit() {
+    isEditing = !isEditing;
+    render();
+  }
+
+  function handleReset() {
+    resetState();
+    render();
+  }
+
+  function exportConfig() {
+    const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mini-breaks-config.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importConfig() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.tiles) || !Array.isArray(parsed.sidebar)) {
+            alert("That file doesn't look like a Mini Breaks config (expected version 1 with tiles and sidebar arrays).");
+            return;
+          }
+          if (!confirm('Replace your current Mini Breaks config with this file? Your daily checkbox state will be preserved.')) return;
+          config = parsed;
+          saveConfig();
+          render();
+        } catch (e) {
+          alert("Couldn't parse that file as JSON.");
+        }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
+  }
+
+  // ─── Init ───
+
+  document.getElementById('edit-btn').addEventListener('click', toggleEdit);
+  document.getElementById('reset-btn').addEventListener('click', handleReset);
+  document.getElementById('export-btn').addEventListener('click', exportConfig);
+  document.getElementById('import-btn').addEventListener('click', importConfig);
+
+  saveConfig(); // persist defaults on first load
+  render();
+})();
+</script>
+
+</body>
+</html>
