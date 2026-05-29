@@ -258,6 +258,17 @@ input[type="text"].is-invalid { border-color: var(--danger); }
   color: var(--teal-dark);
 }
 
+a.tile-title {
+  text-decoration: none;
+  cursor: pointer;
+}
+a.tile-title:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--teal-soft);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
 .tile-frame {
   position: relative;
   width: 100%;
@@ -486,6 +497,25 @@ input[type="text"].is-invalid { border-color: var(--danger); }
     return null;
   }
 
+  // Given an embed URL, return the corresponding youtube.com page URL (playlist
+  // page if there's a list param, watch page if it's a single video). Used to
+  // turn tile titles into links to the editable playlist on YouTube.
+  function playlistPageUrl(embedUrl) {
+    if (!embedUrl) return null;
+    let url;
+    try { url = new URL(embedUrl); } catch (e) { return null; }
+    const listId = url.searchParams.get('list');
+    if (listId) return `https://www.youtube.com/playlist?list=${listId}`;
+    const path = url.pathname;
+    if (path.startsWith('/embed/')) {
+      const videoId = path.slice('/embed/'.length);
+      if (videoId && videoId !== 'videoseries') {
+        return `https://www.youtube.com/watch?v=${videoId}`;
+      }
+    }
+    return null;
+  }
+
   // ─── Render ───
 
   function render() {
@@ -632,7 +662,17 @@ input[type="text"].is-invalid { border-color: var(--danger); }
     const header = document.createElement('header');
     header.className = 'tile-header';
     if (!isEditing) {
-      const title = document.createElement('span');
+      const ytLink = playlistPageUrl(tile.url);
+      let title;
+      if (ytLink) {
+        title = document.createElement('a');
+        title.href = ytLink;
+        title.target = '_blank';
+        title.rel = 'noopener noreferrer';
+        title.title = 'Open on YouTube';
+      } else {
+        title = document.createElement('span');
+      }
       title.className = 'tile-title';
       title.textContent = tile.label;
       header.appendChild(title);
