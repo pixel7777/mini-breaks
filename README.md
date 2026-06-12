@@ -1,14 +1,41 @@
 # Mini Breaks
 
-A personal, single-page web app — embedded YouTube playlist tiles in a calm teal-and-white grid plus a sidebar checklist of daily routines, with an in-page editor so adding a tile or renaming a row doesn't require touching the source.
+A personal, password-protected daily web app on Cloudflare Pages. Three tabs:
 
-Hosted on Cloudflare Pages. One self-contained `index.html` — HTML + CSS + JS inline, no build step. State lives in `localStorage` (per browser, per machine); Export/Import config as JSON to carry the setup across machines.
+- **Breaks** — YouTube playlist tiles in a calm teal grid; Habits checklist;
+  one-time tasks that self-delete when checked, organized by colored dividers.
+- **News & Shopping** — free-text topics tracked by a nightly agent; fresh
+  items get a 1–2 sentence summary + link, quiet topics sit in a no-news list,
+  stuck topics say exactly what to do about them.
+- **Journal** — one entry per day with mood, photo, calendar/timeline/search,
+  and a daily three-card tarot reading rendered from a BG3-style deck.
+
+## Architecture
+
+- Static shell: `index.html`, `css/app.css`, `js/app.js`, `js/tarot-core.js`.
+  No build step, no runtime dependencies.
+- `functions/` — Cloudflare Pages Functions: `_middleware.js` (password gate,
+  HMAC cookie), `auth/login.js`, `api/data/[key].js` (whitelisted JSON store
+  over the `DATA` KV binding; cookie- or bearer-authenticated).
+- Storage: `localStorage` for layout + daily checkboxes (local-first);
+  Cloudflare KV for journal, topics, digest, tarot (durable, cross-device).
+- Secrets (`APP_PASSWORD`, `API_TOKEN`) are Pages dashboard env vars — never
+  in this repo.
+
+## Tests
+
+`npm test` (node:test, no dependencies) — covers the auth gate, login, API
+store, and the tarot quick-draw logic.
 
 ## Where the design lives
 
-Design intent, vision, decisions, and cycle records live in the vault at `Apps/Mini Breaks/` (in [Heidi's main vault](https://github.com/pixel7777/hkamenar-workspace), not in this repo). Read those for context. This repo is implementation only.
+Design intent, vision, runbooks, and cycle records live in the vault at
+`Apps/Mini Breaks/` (in [Heidi's main vault](https://github.com/pixel7777/hkamenar-workspace),
+not in this repo). This repo is implementation only.
 
 ## Editing
 
-- **Content changes** (adding playlists, renaming activities, reordering, changing checkbox counts) are done in the page itself via the "Edit" toggle. No code change needed.
-- **Structure changes** (new tile types, new features, layout shifts) require an `index.html` edit + push to `main` → Cloudflare deploys.
+- **Content changes** (playlists, habits, tasks, dividers, topics) are done in
+  the page itself via edit modes. No code change needed.
+- **Structure changes** (new features, layout shifts) require a code edit +
+  push to `main` → Cloudflare deploys.
