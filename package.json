@@ -1,0 +1,9 @@
+{
+  "name": "mini-breaks",
+  "private": true,
+  "type": "module",
+  "description": "Personal break dashboard on Cloudflare Pages. No runtime dependencies.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
