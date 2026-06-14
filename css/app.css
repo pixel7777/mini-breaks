@@ -197,6 +197,18 @@ button { font-family: inherit; }
 
 /* Tasks */
 
+/* Task labels wrap to show the full task (habits keep the one-line ellipsis).
+   align-items at the top keeps the checkbox and arrow aligned with the first
+   line when a task wraps to two. */
+.task-row { align-items: flex-start; }
+.task-row .activity-main { align-items: flex-start; }
+.task-row .activity-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .task-row.is-pending-delete .activity-label {
   text-decoration: line-through;
   color: var(--text-mute);
