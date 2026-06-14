@@ -426,6 +426,44 @@ a.tile-title:hover {
 .news-card.is-problem { background: var(--amber-bg); border-color: #ecd9b0; }
 .news-card.is-problem .instruction { font-size: 13px; white-space: pre-wrap; }
 
+/* card head + pin/dismiss controls (Cycle 03) */
+.news-card-head { display: flex; align-items: flex-start; gap: 8px; }
+.news-card-head .topic-name { flex: 1; min-width: 0; }
+.news-card-controls { display: flex; gap: 4px; flex-shrink: 0; }
+.icon-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  width: 26px; height: 26px;
+  line-height: 1;
+  font-size: 15px;
+  cursor: pointer;
+  color: var(--text-mute);
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s;
+}
+.icon-btn:hover { opacity: 1; background: var(--teal-soft-bg); }
+.icon-btn.is-on { opacity: 1; }
+
+/* a pinned card gets the gold-leaning accent so it reads as kept */
+.news-card.is-pinned { border-color: var(--teal-soft); border-left: 3px solid var(--teal); }
+
+/* "Fresh" title row that also holds the Dismiss-all control */
+.news-section-title-row { display: flex; align-items: center; justify-content: space-between; }
+.dismiss-all-btn {
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-mute);
+  cursor: pointer;
+}
+.dismiss-all-btn:hover { background: var(--danger-bg); border-color: #f0cfc9; color: var(--danger); }
+
 .no-news-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .no-news-chip {
   font-size: 13px;
