@@ -4,6 +4,9 @@
 // journal, topics, digest, and tarot live in Cloudflare KV via /api/data/*.
 
 import { drawReading } from './tarot-core.js';
+import {
+  normalizeState, partitionItems, togglePin, dismiss, dismissAllUnpinned, mergeState,
+} from './news-core.js';
 
 (function () {
 'use strict';
@@ -14,6 +17,7 @@ const STATE_KEY = PREFIX + 'state';
 const UI_KEY = PREFIX + 'ui';
 const JOURNAL_LOCAL_KEY = PREFIX + 'journal-local';
 const TOPICS_LOCAL_KEY = PREFIX + 'topics-local';
+const NEWS_STATE_LOCAL_KEY = PREFIX + 'news-state-local';
 
 const GROUP_COLORS = ['#2a9d8f', '#5a8fc4', '#9c6bb8', '#c45a8f', '#c4744f', '#b0822e', '#6ba86b', '#8a8f94'];
 
@@ -722,6 +726,7 @@ function buildTile(tile, idx) {
 
 let topicsDoc = null;   // {version, topics:[{id,label,note}]}
 let digestDoc = null;   // written by the overnight agent
+let newsStateDoc = null; // {dismissed:[id], pinned:[id]} — app-written, agent-reads dismissed
 
 async function loadTopics() {
   const res = await cloud.get('topics');
@@ -754,8 +759,41 @@ async function saveTopics() {
   if (!res.ok) localStorage.setItem(TOPICS_LOCAL_KEY, JSON.stringify(topicsDoc));
 }
 
+async function loadNewsState() {
+  const res = await cloud.get('news-state');
+  if (res.ok || res.missing) {
+    newsStateDoc = normalizeState(res.ok ? res.data : null);
+    // union-merge any state saved locally before cloud was reachable
+    const local = loadJSON(NEWS_STATE_LOCAL_KEY, null);
+    if (local) {
+      newsStateDoc = mergeState(newsStateDoc, local);
+      const saved = await cloud.put('news-state', newsStateDoc);
+      if (saved.ok) localStorage.removeItem(NEWS_STATE_LOCAL_KEY);
+    }
+  } else {
+    newsStateDoc = normalizeState(loadJSON(NEWS_STATE_LOCAL_KEY, null));
+  }
+}
+
+async function saveNewsState() {
+  if (cloud.available === false) {
+    localStorage.setItem(NEWS_STATE_LOCAL_KEY, JSON.stringify(newsStateDoc));
+    return;
+  }
+  const res = await cloud.put('news-state', newsStateDoc);
+  if (!res.ok) localStorage.setItem(NEWS_STATE_LOCAL_KEY, JSON.stringify(newsStateDoc));
+}
+
+// Apply a news-core state transform, persist, and re-render.
+async function updateNewsState(next) {
+  newsStateDoc = next;
+  renderNews();          // immediate feedback; persistence follows
+  await saveNewsState();
+}
+
 async function refreshNews() {
   if (!topicsDoc) await loadTopics();
+  await loadNewsState();
   const res = await cloud.get('digest');
   digestDoc = res.ok ? res.data : null;
   renderNews();
@@ -798,28 +836,33 @@ function renderNews() {
     });
   }
 
-  host.append(el('div', 'news-section-title', 'Fresh'));
-  if (fresh.length) {
-    fresh.forEach(item => {
-      const card = el('div', 'news-card');
-      card.append(el('div', 'topic-name', item.topic));
-      card.append(el('div', 'summary', item.summary));
-      const meta = el('div', 'meta');
-      if (item.url) {
-        const a = document.createElement('a');
-        a.href = item.url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.textContent = 'Learn more →';
-        meta.append(a);
-      }
-      if (item.source) meta.append(el('span', null, item.source));
-      if (item.tier) meta.append(el('span', 'tier-pill', item.tier));
-      card.append(meta);
-      host.append(card);
+  const { pinned, normal } = partitionItems(fresh, newsStateDoc);
+
+  if (pinned.length) {
+    host.append(el('div', 'news-section-title', 'Pinned'));
+    pinned.forEach(item => host.append(newsCard(item, true)));
+  }
+
+  const freshTitle = el('div', 'news-section-title news-section-title-row');
+  freshTitle.append(el('span', null, 'Fresh'));
+  if (normal.length) {
+    const dismissAll = el('button', 'dismiss-all-btn', 'Dismiss all');
+    dismissAll.type = 'button';
+    dismissAll.addEventListener('click', () => {
+      if (!confirm('Dismiss all un-pinned items? Pinned items will stay.')) return;
+      updateNewsState(dismissAllUnpinned(newsStateDoc, fresh));
     });
+    freshTitle.append(dismissAll);
+  }
+  host.append(freshTitle);
+
+  if (normal.length) {
+    normal.forEach(item => host.append(newsCard(item, false)));
   } else {
-    host.append(el('p', 'empty-note', digestDoc ? 'Nothing new since the last run.' : 'No digest yet — the overnight agent hasn’t run since this tab was set up.'));
+    const msg = digestDoc
+      ? (pinned.length ? 'Nothing else new — your pinned items are above.' : 'Nothing new since the last run.')
+      : 'No digest yet — the overnight agent hasn’t run since this tab was set up.';
+    host.append(el('p', 'empty-note', msg));
   }
 
   if (noNews.length) {
@@ -841,6 +884,50 @@ function renderNews() {
     untracked.forEach(t => wrap.append(el('span', 'no-news-chip', t.label)));
     host.append(wrap);
   }
+}
+
+// One news/shopping card with pin/unpin and (un-pinned only) dismiss controls.
+function newsCard(item, isPinned) {
+  const card = el('div', 'news-card' + (isPinned ? ' is-pinned' : ''));
+
+  const head = el('div', 'news-card-head');
+  head.append(el('div', 'topic-name', item.topic));
+
+  const controls = el('div', 'news-card-controls');
+  const pin = el('button', 'icon-btn' + (isPinned ? ' is-on' : ''), '📌');
+  pin.type = 'button';
+  pin.title = isPinned ? 'Unpin' : 'Pin';
+  pin.setAttribute('aria-label', pin.title);
+  pin.addEventListener('click', () => updateNewsState(togglePin(newsStateDoc, item.id)));
+  controls.append(pin);
+
+  // Story B: the × dismiss control exists only on un-pinned cards — a pinned
+  // item must be unpinned before it can be dismissed.
+  if (!isPinned) {
+    const x = el('button', 'icon-btn', '×');
+    x.type = 'button';
+    x.title = 'Dismiss';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.addEventListener('click', () => updateNewsState(dismiss(newsStateDoc, item.id)));
+    controls.append(x);
+  }
+  head.append(controls);
+  card.append(head);
+
+  card.append(el('div', 'summary', item.summary));
+  const meta = el('div', 'meta');
+  if (item.url) {
+    const a = document.createElement('a');
+    a.href = item.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = 'Learn more →';
+    meta.append(a);
+  }
+  if (item.source) meta.append(el('span', null, item.source));
+  if (item.tier) meta.append(el('span', 'tier-pill', item.tier));
+  card.append(meta);
+  return card;
 }
 
 function renderTopicEditor(host) {

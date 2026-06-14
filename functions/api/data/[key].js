@@ -4,7 +4,7 @@
 
 import { isAuthorized } from '../../_lib.js';
 
-const KEY_RE = /^(topics|digest|agent-state|journal|photo-\d{4}-\d{2}-\d{2}|tarot-\d{4}-\d{2}-\d{2})$/;
+const KEY_RE = /^(topics|digest|news-state|agent-state|journal|photo-\d{4}-\d{2}-\d{2}|tarot-\d{4}-\d{2}-\d{2})$/;
 const MAX_BYTES = 4 * 1024 * 1024; // photos are client-resized well below this
 
 function json(body, status = 200) {

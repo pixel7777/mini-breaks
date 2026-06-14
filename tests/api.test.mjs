@@ -74,6 +74,24 @@ test('cookie-auth PUT then GET round-trips a document (the app path)', async () 
   assert.equal((await get.json()).entries['2026-06-12'].text, 'hi');
 });
 
+test('news-state round-trips on the app (cookie) path', async () => {
+  const kv = mockKV();
+  const cookie = await makeAuthCookieValue(PASSWORD);
+  const doc = JSON.stringify({ dismissed: ['t::https://a.com/1'], pinned: ['t::https://a.com/2'] });
+  const put = await api(ctx(apiReq('news-state', { method: 'PUT', body: doc, cookie }), env(kv), 'news-state'));
+  assert.equal(put.status, 200);
+  const get = await api(ctx(apiReq('news-state', { cookie }), env(kv), 'news-state'));
+  assert.equal(get.status, 200);
+  assert.deepEqual(await get.json(), { dismissed: ['t::https://a.com/1'], pinned: ['t::https://a.com/2'] });
+});
+
+test('the agent (bearer) path can read news-state to prune dismissed items', async () => {
+  const kv = mockKV({ 'data:news-state': '{"dismissed":["t::x"],"pinned":[]}' });
+  const get = await api(ctx(apiReq('news-state', { bearer: TOKEN }), env(kv), 'news-state'));
+  assert.equal(get.status, 200);
+  assert.deepEqual((await get.json()).dismissed, ['t::x']);
+});
+
 test('missing documents return 404 {missing:true}', async () => {
   const res = await api(ctx(apiReq('topics', { bearer: TOKEN }), env(mockKV()), 'topics'));
   assert.equal(res.status, 404);
