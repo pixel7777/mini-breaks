@@ -7,6 +7,7 @@ import { drawReading } from './tarot-core.js';
 import {
   normalizeState, partitionItems, togglePin, dismiss, dismissAllUnpinned, mergeState,
 } from './news-core.js';
+import { setTaskGroup, groupOptions } from './tasks-core.js';
 
 (function () {
 'use strict';
@@ -461,7 +462,43 @@ function buildTaskRow(task) {
   });
   main.append(cb, el('span', 'activity-label', task.label));
   li.append(main);
+
+  // Per-row divider control (Cycle 04): assign or move a task's divider from
+  // the normal view, no Edit mode. Hidden when there are no dividers — keeps
+  // the row calm for users who don't use them.
+  if (config.groups.length) {
+    li.append(buildRowDividerControl(task));
+  }
   return li;
+}
+
+// A compact native <select> for choosing a task's divider in the normal view.
+// Native so mobile gets the OS picker (calm, accessible); change moves the task
+// and re-renders so it relocates under the right heading.
+function buildRowDividerControl(task) {
+  const sel = document.createElement('select');
+  sel.className = 'task-divider-select';
+  sel.setAttribute('aria-label', 'Divider for ' + task.label);
+  const opts = groupOptions(config, task);
+  opts.forEach(o => {
+    const opt = el('option', null, o.name);
+    opt.value = o.id || '';
+    if (o.selected) opt.selected = true;
+    sel.append(opt);
+  });
+  // Tint the control with the current divider's color so it reads at a glance.
+  const current = opts.find(o => o.selected);
+  if (current && current.color) {
+    sel.style.color = current.color;
+    sel.classList.add('is-set');
+  }
+  sel.addEventListener('change', () => {
+    if (setTaskGroup(config, task.id, sel.value || null)) {
+      saveConfig();
+      renderTasks();
+    }
+  });
+  return sel;
 }
 
 function buildTaskEditRow(task) {

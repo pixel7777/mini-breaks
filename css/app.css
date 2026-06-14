@@ -202,6 +202,29 @@ button { font-family: inherit; }
   color: var(--text-mute);
 }
 
+/* Per-row divider control (Cycle 04). Compact and low-chrome so a list of
+   tasks stays calm; only the dropdown chevron hints it's interactive until
+   hovered/focused. Tinted with the divider's color when one is set. */
+.task-divider-select {
+  flex-shrink: 0;
+  max-width: 110px;
+  font-size: 12px;
+  color: var(--text-mute);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+  appearance: auto;
+}
+.task-divider-select:hover,
+.task-divider-select:focus {
+  border-color: var(--border);
+  background: var(--card);
+  outline: none;
+}
+.task-divider-select.is-set { font-weight: 600; }
+
 .group-heading {
   display: flex;
   align-items: center;
