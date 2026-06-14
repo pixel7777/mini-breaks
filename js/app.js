@@ -472,10 +472,18 @@ function buildTaskRow(task) {
   return li;
 }
 
-// A compact native <select> for choosing a task's divider in the normal view.
-// Native so mobile gets the OS picker (calm, accessible); change moves the task
-// and re-renders so it relocates under the right heading.
+// Divider control for the normal view: just a small arrow on the row so the
+// task label keeps its room. The full divider options appear only when the
+// arrow is tapped. Built as a native <select> overlaid transparently on the
+// arrow glyph — so tapping the arrow opens the native options menu (the OS
+// picker on mobile: calm, accessible) and change moves the task + re-renders.
+// The task already sits under its divider's heading, so the arrow is just a
+// cue (tinted with the divider's color when one is set), not a label.
 function buildRowDividerControl(task) {
+  const wrap = el('div', 'task-divider');
+  const arrow = el('span', 'task-divider-arrow', '▾');
+  arrow.setAttribute('aria-hidden', 'true');
+
   const sel = document.createElement('select');
   sel.className = 'task-divider-select';
   sel.setAttribute('aria-label', 'Divider for ' + task.label);
@@ -486,11 +494,10 @@ function buildRowDividerControl(task) {
     if (o.selected) opt.selected = true;
     sel.append(opt);
   });
-  // Tint the control with the current divider's color so it reads at a glance.
   const current = opts.find(o => o.selected);
   if (current && current.color) {
-    sel.style.color = current.color;
-    sel.classList.add('is-set');
+    arrow.style.color = current.color;
+    wrap.classList.add('is-set');
   }
   sel.addEventListener('change', () => {
     if (setTaskGroup(config, task.id, sel.value || null)) {
@@ -498,7 +505,8 @@ function buildRowDividerControl(task) {
       renderTasks();
     }
   });
-  return sel;
+  wrap.append(arrow, sel);
+  return wrap;
 }
 
 function buildTaskEditRow(task) {
