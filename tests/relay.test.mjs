@@ -177,3 +177,76 @@ test('relayFetch refuses a blocked target without calling fetch at all', async (
     },
   );
 });
+
+// ── retry: shared-IP rate limiting, not refusal ──
+
+test('a 503 is retried and the eventual success is returned', async () => {
+  let calls = 0;
+  await withStubbedFetch(
+    async () => {
+      calls++;
+      return calls < 3
+        ? new Response('busy', { status: 503 })
+        : new Response('<rss/>', { status: 200 });
+    },
+    async () => {
+      const res = await relayFetch('https://news.google.com/rss/search?q=x', { retries: 3, retryDelays: [0] });
+      assert.equal(res.ok, true);
+      assert.equal(res.status, 200);
+      assert.equal(res.text, '<rss/>');
+      assert.equal(calls, 3);
+    },
+  );
+});
+
+test('a 403 bot-wall is NOT retried — it is a refusal, not congestion', async () => {
+  let calls = 0;
+  await withStubbedFetch(
+    async () => { calls++; return new Response('<html>denied</html>', { status: 403 }); },
+    async () => {
+      const res = await relayFetch('https://mondialpharma.com/wp-json/', { retries: 3, retryDelays: [0] });
+      assert.equal(res.status, 403);
+      assert.equal(calls, 1);
+    },
+  );
+});
+
+test('retries are exhausted and the last failure is reported', async () => {
+  let calls = 0;
+  await withStubbedFetch(
+    async () => { calls++; return new Response('busy', { status: 503 }); },
+    async () => {
+      const res = await relayFetch('https://x.com/', { retries: 2, retryDelays: [0] });
+      assert.equal(res.status, 503);
+      assert.equal(calls, 3); // one attempt + two retries
+    },
+  );
+});
+
+test('a transport failure is retried too', async () => {
+  let calls = 0;
+  await withStubbedFetch(
+    async () => {
+      calls++;
+      if (calls === 1) throw new Error('reset');
+      return new Response('ok', { status: 200 });
+    },
+    async () => {
+      const res = await relayFetch('https://x.com/', { retries: 2, retryDelays: [0] });
+      assert.equal(res.ok, true);
+      assert.equal(res.text, 'ok');
+    },
+  );
+});
+
+test('with retries off, a 503 comes straight back (default behavior unchanged)', async () => {
+  let calls = 0;
+  await withStubbedFetch(
+    async () => { calls++; return new Response('busy', { status: 503 }); },
+    async () => {
+      const res = await relayFetch('https://x.com/');
+      assert.equal(res.status, 503);
+      assert.equal(calls, 1);
+    },
+  );
+});

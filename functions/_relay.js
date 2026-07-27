@@ -117,10 +117,36 @@ export async function readCapped(response, maxBytes = MAX_BYTES) {
   return { text: new TextDecoder().decode(merged), truncated };
 }
 
+// Statuses worth another go: shared-IP rate limiting rather than a real refusal.
+// Google News answers a Cloudflare egress IP with a 503 on roughly four requests
+// in five — measured against the live deployment 2026-07-27 — while the identical
+// request from a residential IP always succeeds. A retry turns that into a
+// reliable rung. A 403 is NOT here: that is a bot-wall saying no, and retrying it
+// is both futile and rude.
+export const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+export const RETRY_DELAYS_MS = [250, 700, 1600];
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 // Fetch a target with every guard applied. Redirects are followed manually so
 // each hop is re-validated — otherwise a public URL could redirect into the
 // private range the host check exists to block.
 export async function relayFetch(rawUrl, opts = {}) {
+  const retries = opts.retries ?? 0;
+  const delays = opts.retryDelays ?? RETRY_DELAYS_MS;
+
+  let last = await relayFetchOnce(rawUrl, opts);
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const worthRetrying = (!last.ok && last.error === 'fetch-failed')
+      || (last.ok && RETRY_STATUSES.has(last.status));
+    if (!worthRetrying) return last;
+    await sleep(delays[Math.min(attempt, delays.length - 1)]);
+    last = await relayFetchOnce(rawUrl, opts);
+  }
+  return last;
+}
+
+export async function relayFetchOnce(rawUrl, opts = {}) {
   const maxBytes = opts.maxBytes ?? MAX_BYTES;
   const maxRedirects = opts.maxRedirects ?? MAX_REDIRECTS;
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;

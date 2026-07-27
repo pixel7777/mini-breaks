@@ -47,7 +47,12 @@ export async function onRequest(context) {
   });
   if (!feedUrl) return json({ error: 'missing-query' }, 400);
 
-  const res = await relayFetch(feedUrl, { accept: 'application/rss+xml, application/xml, text/xml, */*' });
+  // Retries matter here: Google 503s a Cloudflare egress IP most of the time and
+  // succeeds on a retry. Without this the rung looks dead when it is only busy.
+  const res = await relayFetch(feedUrl, {
+    accept: 'application/rss+xml, application/xml, text/xml, */*',
+    retries: 3,
+  });
   if (!res.ok) return json({ error: res.error, detail: res.detail, feedUrl }, res.status || 502);
   if (res.status >= 400) return json({ error: 'feed-unavailable', upstreamStatus: res.status, feedUrl }, 502);
 
