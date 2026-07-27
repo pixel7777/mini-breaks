@@ -6,7 +6,9 @@
 
 import { isAuthorized } from '../_lib.js';
 import { relayFetch, escapeHtml } from '../_relay.js';
-import { buildGoogleNewsUrl, parseRssItems } from '../_feed.js';
+import { buildGoogleNewsUrl, buildBingNewsUrl, parseRssItems } from '../_feed.js';
+
+const FEED_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -38,30 +40,59 @@ export async function onRequest(context) {
   const query = params.get('q');
   const asHtml = params.get('format') === 'html';
 
-  const feedUrl = buildGoogleNewsUrl({
-    q: query,
-    when: params.get('when') ?? '1d',
-    hl: params.get('hl') ?? 'en-US',
-    gl: params.get('gl') ?? 'US',
-    ceid: params.get('ceid') ?? 'US:en',
-  });
-  if (!feedUrl) return json({ error: 'missing-query' }, 400);
+  const when = params.get('when') ?? '1d';
 
-  // Retries matter here: Google 503s a Cloudflare egress IP most of the time and
-  // succeeds on a retry. Without this the rung looks dead when it is only busy.
-  const res = await relayFetch(feedUrl, {
-    accept: 'application/rss+xml, application/xml, text/xml, */*',
-    retries: 3,
-  });
-  if (!res.ok) return json({ error: res.error, detail: res.detail, feedUrl }, res.status || 502);
-  if (res.status >= 400) return json({ error: 'feed-unavailable', upstreamStatus: res.status, feedUrl }, 502);
+  // Provider ladder. Google first — better coverage and real locale control —
+  // but it rate-limits Cloudflare's egress hard, so Bing backs it up rather than
+  // letting a busy Google read as "no news".
+  const providers = [
+    {
+      name: 'google',
+      url: buildGoogleNewsUrl({
+        q: query,
+        when,
+        hl: params.get('hl') ?? 'en-US',
+        gl: params.get('gl') ?? 'US',
+        ceid: params.get('ceid') ?? 'US:en',
+      }),
+    },
+    { name: 'bing', url: buildBingNewsUrl({ q: query, when }) },
+  ].filter(p => p.url);
 
-  const items = parseRssItems(res.text);
+  if (!providers.length) return json({ error: 'missing-query' }, 400);
+
+  const attempts = [];
+  let served = null;
+  for (const p of providers) {
+    const res = await relayFetch(p.url, {
+      accept: FEED_ACCEPT, retries: 1, retryDelays: [400], timeoutMs: 8000,
+    });
+    if (!res.ok || res.status >= 400) {
+      attempts.push({ provider: p.name, status: res.status ?? null, error: res.error ?? 'upstream' });
+      continue;
+    }
+    const items = parseRssItems(res.text);
+    attempts.push({ provider: p.name, status: res.status, count: items.length });
+    // Remember the first provider that answered, but keep going for one that
+    // actually has stories — an empty feed is an answer, just not a useful one.
+    if (!served) served = { provider: p.name, feedUrl: p.url, items, truncated: res.truncated };
+    if (items.length) { served = { provider: p.name, feedUrl: p.url, items, truncated: res.truncated }; break; }
+  }
+
+  if (!served) return json({ error: 'feed-unavailable', attempts }, 502);
 
   if (asHtml) {
-    return new Response(itemsAsHtml(query, feedUrl, items), {
+    return new Response(itemsAsHtml(query, served.feedUrl, served.items), {
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   }
-  return json({ query, feedUrl, count: items.length, truncated: res.truncated, items });
+  return json({
+    query,
+    provider: served.provider,
+    feedUrl: served.feedUrl,
+    count: served.items.length,
+    truncated: served.truncated,
+    attempts,
+    items: served.items,
+  });
 }

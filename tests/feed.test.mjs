@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildGoogleNewsUrl, parseRssItems, decodeXml } from '../functions/_feed.js';
+import { buildGoogleNewsUrl, buildBingNewsUrl, parseRssItems, decodeXml } from '../functions/_feed.js';
 
 // ── feed URL construction ──
 
@@ -103,4 +103,30 @@ test('malformed or non-string input degrades to an empty list rather than throwi
 test('an item with neither a title nor a link is skipped', () => {
   const items = parseRssItems('<rss><item><pubDate>x</pubDate></item></rss>');
   assert.deepEqual(items, []);
+});
+
+// ── Bing fallback provider ──
+
+test('the Bing feed url carries the query, RSS format and a freshness interval', () => {
+  const u = new URL(buildBingNewsUrl({ q: 'star trek', when: '1d' }));
+  assert.equal(u.origin + u.pathname, 'https://www.bing.com/news/search');
+  assert.equal(u.searchParams.get('q'), 'star trek');
+  assert.equal(u.searchParams.get('format'), 'RSS');
+  assert.equal(u.searchParams.get('qft'), 'interval="4"');
+});
+
+test('a wider window asks Bing for the past week', () => {
+  const u = new URL(buildBingNewsUrl({ q: 'x', when: '2d' }));
+  assert.equal(u.searchParams.get('qft'), 'interval="7"');
+});
+
+test('an empty query yields no Bing url either', () => {
+  assert.equal(buildBingNewsUrl({ q: '' }), null);
+  assert.equal(buildBingNewsUrl(), null);
+});
+
+test('the same parser reads a Bing feed', () => {
+  const items = parseRssItems('<rss><channel><item><title>B</title><link>https://b/1</link><pubDate>Sun, 26 Jul 2026 10:00:00 GMT</pubDate></item></channel></rss>');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'B');
 });

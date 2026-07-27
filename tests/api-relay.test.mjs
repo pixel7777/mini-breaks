@@ -144,14 +144,89 @@ test('a query is required', async () => {
   assert.equal((await res.json()).error, 'missing-query');
 });
 
-test('an upstream feed error becomes a 502 carrying the upstream status', async () => {
+test('only when EVERY provider fails is it a 502, and the attempts are reported', async () => {
   await withStubbedFetch(async () => new Response('nope', { status: 429 }), async () => {
     const res = await newsRoute({ request: req('/api/news?q=x', { bearer: TOKEN }), env: env() });
     assert.equal(res.status, 502);
     const body = await res.json();
     assert.equal(body.error, 'feed-unavailable');
-    assert.equal(body.upstreamStatus, 429);
+    assert.deepEqual(body.attempts.map(a => a.provider), ['google', 'bing']);
+    assert.ok(body.attempts.every(a => a.status === 429));
   });
+});
+
+// ── the provider ladder ──
+// Google rate-limits Cloudflare's egress hard (measured 2026-07-27), so a busy
+// Google must not read as "no news" — Bing backs it up.
+
+const BING_FEED = `<rss><channel><item><title>Bing headline</title>
+<link>https://bing.example/a</link></item></channel></rss>`;
+
+function byHost({ google, bing }) {
+  return async (url) => (String(url).includes('news.google.com') ? google() : bing());
+}
+
+test('when Google refuses, Bing serves and the provider is reported', async () => {
+  await withStubbedFetch(
+    byHost({
+      google: () => new Response('busy', { status: 503 }),
+      bing: () => new Response(BING_FEED, { status: 200 }),
+    }),
+    async () => {
+      const res = await newsRoute({ request: req('/api/news?q=x', { bearer: TOKEN }), env: env() });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.provider, 'bing');
+      assert.equal(body.count, 1);
+      assert.equal(body.items[0].title, 'Bing headline');
+      assert.match(body.feedUrl, /bing\.com\/news\/search/);
+      assert.deepEqual(body.attempts.map(a => a.provider), ['google', 'bing']);
+    },
+  );
+});
+
+test('Google is preferred when it answers with stories — Bing is never called', async () => {
+  let bingCalls = 0;
+  await withStubbedFetch(
+    byHost({
+      google: () => new Response(FEED, { status: 200 }),
+      bing: () => { bingCalls++; return new Response(BING_FEED, { status: 200 }); },
+    }),
+    async () => {
+      const res = await newsRoute({ request: req('/api/news?q=x', { bearer: TOKEN }), env: env() });
+      const body = await res.json();
+      assert.equal(body.provider, 'google');
+      assert.equal(bingCalls, 0);
+    },
+  );
+});
+
+test('an empty Google feed falls through to Bing rather than reporting no news', async () => {
+  await withStubbedFetch(
+    byHost({
+      google: () => new Response('<rss><channel></channel></rss>', { status: 200 }),
+      bing: () => new Response(BING_FEED, { status: 200 }),
+    }),
+    async () => {
+      const res = await newsRoute({ request: req('/api/news?q=x', { bearer: TOKEN }), env: env() });
+      const body = await res.json();
+      assert.equal(body.provider, 'bing');
+      assert.equal(body.count, 1);
+    },
+  );
+});
+
+test('when both providers are empty it is a genuine no-news, not an error', async () => {
+  await withStubbedFetch(
+    async () => new Response('<rss><channel></channel></rss>', { status: 200 }),
+    async () => {
+      const res = await newsRoute({ request: req('/api/news?q=x', { bearer: TOKEN }), env: env() });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.count, 0);
+      assert.deepEqual(body.items, []);
+    },
+  );
 });
 
 test('a feed that parses to nothing is an empty list, not an error', async () => {

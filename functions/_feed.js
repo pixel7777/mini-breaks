@@ -49,6 +49,23 @@ export function parseRssItems(xml) {
   return items;
 }
 
+// Bing's news search also publishes RSS, and — unlike Google — it answers
+// Cloudflare's egress IPs reliably (12/12 on the live deployment, 2026-07-27,
+// while Google 503'd most requests from the same place). It is the fallback
+// provider, not a replacement: Google's coverage and locale control are better
+// when it deigns to answer.
+//
+// Bing's freshness filter is coarse — interval 4 is the past day, 7 the past
+// week — so the agent's publish-date gate stays the real freshness control.
+export function buildBingNewsUrl(opts = {}) {
+  const { q, when = '1d' } = opts;
+  const query = String(q || '').trim();
+  if (!query) return null;
+  const params = new URLSearchParams({ q: query, format: 'RSS' });
+  params.set('qft', 'interval="' + (when === '1d' ? '4' : '7') + '"');
+  return 'https://www.bing.com/news/search?' + params.toString();
+}
+
 // Build a Google News search-feed URL. `when` is the freshness filter the
 // runbook relies on (1d normally, 2d after a missed night); the Croatian
 // variant is simply hl=hr / gl=HR / ceid=HR:hr.
