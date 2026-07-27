@@ -107,17 +107,17 @@ test('an item with neither a title nor a link is skipped', () => {
 
 // ── Bing fallback provider ──
 
-test('the Bing feed url carries the query, RSS format and a freshness interval', () => {
+test('the Bing feed url carries the query, RSS format and newest-first ordering', () => {
   const u = new URL(buildBingNewsUrl({ q: 'star trek', when: '1d' }));
   assert.equal(u.origin + u.pathname, 'https://www.bing.com/news/search');
   assert.equal(u.searchParams.get('q'), 'star trek');
   assert.equal(u.searchParams.get('format'), 'RSS');
-  assert.equal(u.searchParams.get('qft'), 'interval="4"');
+  assert.equal(u.searchParams.get('sortbydate'), '1');
 });
 
-test('a wider window asks Bing for the past week', () => {
+test('no freshness filter is sent to Bing — qft empties the feed', () => {
   const u = new URL(buildBingNewsUrl({ q: 'x', when: '2d' }));
-  assert.equal(u.searchParams.get('qft'), 'interval="7"');
+  assert.equal(u.searchParams.get('qft'), null);
 });
 
 test('an empty query yields no Bing url either', () => {

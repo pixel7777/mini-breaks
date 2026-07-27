@@ -55,14 +55,15 @@ export function parseRssItems(xml) {
 // provider, not a replacement: Google's coverage and locale control are better
 // when it deigns to answer.
 //
-// Bing's freshness filter is coarse — interval 4 is the past day, 7 the past
-// week — so the agent's publish-date gate stays the real freshness control.
+// No freshness filter is applied. Bing's `qft=interval="4"` looks like the right
+// knob and empties the feed outright — measured 2026-07-27: 2 items without it,
+// 0 with it, same query. `sortbydate=1` gets newest-first ordering without
+// discarding anything, and the agent's publish-date gate (§4) is the real
+// freshness control regardless of provider.
 export function buildBingNewsUrl(opts = {}) {
-  const { q, when = '1d' } = opts;
-  const query = String(q || '').trim();
+  const query = String((opts && opts.q) || '').trim();
   if (!query) return null;
-  const params = new URLSearchParams({ q: query, format: 'RSS' });
-  params.set('qft', 'interval="' + (when === '1d' ? '4' : '7') + '"');
+  const params = new URLSearchParams({ q: query, format: 'RSS', sortbydate: '1' });
   return 'https://www.bing.com/news/search?' + params.toString();
 }
 
