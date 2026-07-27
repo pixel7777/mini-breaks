@@ -477,6 +477,23 @@ a.tile-title:hover {
 .news-card.is-problem { background: var(--amber-bg); border-color: #ecd9b0; }
 .news-card.is-problem .instruction { font-size: 13px; white-space: pre-wrap; }
 
+/* a cleared problem, shown only behind the "N cleared" toggle (Cycle 05) */
+.news-card.is-cleared { background: var(--card); border-color: var(--border); opacity: 0.72; }
+.news-card.is-cleared .topic-name { color: var(--text-mute); }
+.cleared-toggle {
+  display: block;
+  margin: 4px 0 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-mute);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cleared-toggle:hover { color: var(--teal-active); }
+
 /* card head + pin/dismiss controls (Cycle 03) */
 .news-card-head { display: flex; align-items: flex-start; gap: 8px; }
 .news-card-head .topic-name { flex: 1; min-width: 0; }

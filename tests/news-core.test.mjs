@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   canonicalUrl, itemId, normalizeState, partitionItems,
   togglePin, dismiss, dismissAllUnpinned, mergeState,
+  problemId, ackProblem, unackProblem, partitionProblems,
 } from '../js/news-core.js';
 
 // ── canonicalUrl ──
@@ -54,9 +55,14 @@ test('itemId for a urlless shopping item uses a stable product key', () => {
 // ── normalizeState ──
 
 test('normalizeState coerces junk into a well-formed doc', () => {
-  assert.deepEqual(normalizeState(null), { dismissed: [], pinned: [] });
-  assert.deepEqual(normalizeState({ dismissed: ['a'] }), { dismissed: ['a'], pinned: [] });
-  assert.deepEqual(normalizeState({ pinned: ['b'], junk: 1 }), { dismissed: [], pinned: ['b'] });
+  assert.deepEqual(normalizeState(null), { dismissed: [], pinned: [], acked: [] });
+  assert.deepEqual(normalizeState({ dismissed: ['a'] }), { dismissed: ['a'], pinned: [], acked: [] });
+  assert.deepEqual(normalizeState({ pinned: ['b'], junk: 1 }), { dismissed: [], pinned: ['b'], acked: [] });
+});
+
+test('a pre-Cycle-05 state document loads with an empty acked list', () => {
+  assert.deepEqual(normalizeState({ dismissed: ['a'], pinned: ['b'] }).acked, []);
+  assert.deepEqual(normalizeState({ acked: 'not-an-array' }).acked, []);
 });
 
 // ── partitionItems ──
@@ -150,4 +156,89 @@ test('mergeState keeps dismissal terminal: an id dismissed anywhere is not pinne
   const m = mergeState({ dismissed: ['x'], pinned: [] }, { dismissed: [], pinned: ['x'] });
   assert.deepEqual(m.dismissed, ['x']);
   assert.deepEqual(m.pinned, []);
+});
+
+test('mergeState unions acked as well, so a clear made offline is not lost', () => {
+  const m = mergeState({ acked: ['t1!!tooling'] }, { acked: ['t2!!no-source'] });
+  assert.deepEqual(m.acked.sort(), ['t1!!tooling', 't2!!no-source']);
+});
+
+// ── problems: clearing "Needs attention" (Cycle 05) ──
+
+const PROBLEMS = [
+  { topicId: 'topic-a', kind: 'js-storefront', topic: 'Lume', instruction: 'open the page' },
+  { topicId: 'system-tooling', kind: 'tooling', topic: 'Overnight task tooling', instruction: 'fix the fetch path' },
+];
+
+test('problemId is keyed on kind, so nightly instruction rewrites do not change it', () => {
+  const monday = { topicId: 'topic-a', kind: 'js-storefront', instruction: 'night 40 of the identical result' };
+  const tuesday = { topicId: 'topic-a', kind: 'js-storefront', instruction: 'night 41 of the identical result' };
+  assert.equal(problemId(monday), problemId(tuesday));
+  assert.equal(problemId(monday), 'topic-a!!js-storefront');
+});
+
+test('an escalation changes the kind, so a worsening problem gets a NEW id', () => {
+  const mild = { topicId: 'topic-a', kind: 'js-storefront' };
+  const escalated = { topicId: 'topic-a', kind: 'fail-streak' };
+  assert.notEqual(problemId(mild), problemId(escalated));
+});
+
+test('an agent-supplied id wins, and a kindless problem still gets a stable id', () => {
+  assert.equal(problemId({ id: 'explicit', topicId: 'x', kind: 'y' }), 'explicit');
+  assert.equal(problemId({ topicId: 'x' }), 'x!!other');
+  assert.equal(problemId(null), '');
+});
+
+test('clearing a card removes it from view and puts it in cleared', () => {
+  const st = ackProblem(normalizeState(null), 'topic-a!!js-storefront');
+  const { visible, cleared } = partitionProblems(PROBLEMS, st);
+  assert.deepEqual(visible.map(p => p.id), ['system-tooling!!tooling']);
+  assert.deepEqual(cleared.map(p => p.id), ['topic-a!!js-storefront']);
+});
+
+test('a cleared card stays cleared when the agent regenerates the same problem', () => {
+  const st = ackProblem(normalizeState(null), 'topic-a!!js-storefront');
+  // the next night's digest: same problem, freshly reworded
+  const tonight = [{ topicId: 'topic-a', kind: 'js-storefront', instruction: 're-confirmed 2026-07-28' }];
+  const { visible } = partitionProblems(tonight, st);
+  assert.deepEqual(visible, []);
+});
+
+test('restoring a cleared card brings it back into view', () => {
+  let st = ackProblem(normalizeState(null), 'topic-a!!js-storefront');
+  st = unackProblem(st, 'topic-a!!js-storefront');
+  const { visible, cleared } = partitionProblems(PROBLEMS, st);
+  assert.equal(visible.length, 2);
+  assert.equal(cleared.length, 0);
+});
+
+test('ack/unack are pure and leave dismissed and pinned untouched', () => {
+  const base = { dismissed: ['d'], pinned: ['p'], acked: [] };
+  const after = ackProblem(base, 'x!!tooling');
+  assert.deepEqual(base.acked, []);            // original untouched
+  assert.deepEqual(after.dismissed, ['d']);
+  assert.deepEqual(after.pinned, ['p']);
+  assert.deepEqual(after.acked, ['x!!tooling']);
+});
+
+test('acking the same id twice does not duplicate it', () => {
+  let st = ackProblem(normalizeState(null), 'x!!tooling');
+  st = ackProblem(st, 'x!!tooling');
+  assert.deepEqual(st.acked, ['x!!tooling']);
+});
+
+test('partitionProblems tolerates a missing or non-array problems list', () => {
+  assert.deepEqual(partitionProblems(null, normalizeState(null)), { visible: [], cleared: [] });
+  assert.deepEqual(partitionProblems(undefined, null), { visible: [], cleared: [] });
+});
+
+test('clearing a problem does not affect fresh-item dismissal, and vice versa', () => {
+  const items = [{ topicId: 't', url: 'https://a.com/1' }];
+  let st = ackProblem(normalizeState(null), 't!!tooling');
+  const { normal } = partitionItems(items, st);
+  assert.equal(normal.length, 1, 'an acked problem id must not hide a news item');
+
+  st = dismiss(st, 't::https://a.com/1');
+  const { visible } = partitionProblems([{ topicId: 't', kind: 'tooling' }], st);
+  assert.equal(visible.length, 0, 'the problem stays cleared through an unrelated dismissal');
 });

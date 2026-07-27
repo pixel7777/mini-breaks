@@ -44,11 +44,14 @@ export function itemId(item) {
 }
 
 // Coerce any stored value into a well-formed state document.
+// `acked` (Cycle 05) holds cleared "Needs attention" problem ids. It is a third,
+// independent list — problem ids never mix with the item ids in dismissed/pinned.
 export function normalizeState(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
   return {
     dismissed: Array.isArray(s.dismissed) ? s.dismissed.slice() : [],
     pinned: Array.isArray(s.pinned) ? s.pinned.slice() : [],
+    acked: Array.isArray(s.acked) ? s.acked.slice() : [],
   };
 }
 
@@ -82,7 +85,7 @@ export function togglePin(state, id) {
   } else if (!st.dismissed.includes(id)) {
     pinned.add(id);
   }
-  return { dismissed: st.dismissed.slice(), pinned: [...pinned] };
+  return { dismissed: st.dismissed.slice(), pinned: [...pinned], acked: st.acked.slice() };
 }
 
 // Dismiss an id — UNLESS it is currently pinned, in which case this is a no-op
@@ -92,7 +95,7 @@ export function dismiss(state, id) {
   if (st.pinned.includes(id)) return st;
   const dismissed = new Set(st.dismissed);
   dismissed.add(id);
-  return { dismissed: [...dismissed], pinned: st.pinned.slice() };
+  return { dismissed: [...dismissed], pinned: st.pinned.slice(), acked: st.acked.slice() };
 }
 
 // Dismiss every displayed item that isn't pinned; pinned items survive.
@@ -104,7 +107,55 @@ export function dismissAllUnpinned(state, items) {
     const id = itemId(raw);
     if (!pinned.has(id)) dismissed.add(id);
   }
-  return { dismissed: [...dismissed], pinned: st.pinned.slice() };
+  return { dismissed: [...dismissed], pinned: st.pinned.slice(), acked: st.acked.slice() };
+}
+
+// ── "Needs attention" problems (Cycle 05) ───────────────────────────────────
+//
+// A problem's identity is keyed on its KIND, not on its instruction text: the
+// agent rewrites that text every night (it carries a "re-confirmed <date>"
+// stamp), so a text hash would resurrect every cleared card nightly. Keying on
+// kind also means an ESCALATION — the agent switching a topic from a degraded
+// warning to "drop this topic" (kind `fail-streak`) — produces a NEW id, so a
+// worsening problem still reaches Heidi past an earlier clear.
+
+export function problemId(problem) {
+  if (!problem || typeof problem !== 'object') return '';
+  if (problem.id) return problem.id;
+  return (problem.topicId || '') + '!!' + (problem.kind || 'other');
+}
+
+// Clearing is permanent for that problem: the nightly regeneration cannot bring
+// a cleared card back. Heidi's complaint was that these cards never clear, and a
+// card that returns on its own is a card that didn't clear.
+export function ackProblem(state, id) {
+  const st = normalizeState(state);
+  const acked = new Set(st.acked);
+  acked.add(id);
+  return { dismissed: st.dismissed.slice(), pinned: st.pinned.slice(), acked: [...acked] };
+}
+
+export function unackProblem(state, id) {
+  const st = normalizeState(state);
+  const acked = new Set(st.acked);
+  acked.delete(id);
+  return { dismissed: st.dismissed.slice(), pinned: st.pinned.slice(), acked: [...acked] };
+}
+
+// Split problems into the ones still showing and the ones Heidi has cleared.
+// Each returned entry carries its resolved `id`; input order is preserved.
+export function partitionProblems(problems, state) {
+  const st = normalizeState(state);
+  const acked = new Set(st.acked);
+  const visible = [];
+  const cleared = [];
+  for (const raw of Array.isArray(problems) ? problems : []) {
+    const id = problemId(raw);
+    const entry = { ...raw, id };
+    if (acked.has(id)) cleared.push(entry);
+    else visible.push(entry);
+  }
+  return { visible, cleared };
 }
 
 // Union-merge two states (local fallback ↔ cloud), preserving the invariant:
@@ -114,6 +165,7 @@ export function mergeState(a, b) {
   const sb = normalizeState(b);
   const dismissed = new Set([...sa.dismissed, ...sb.dismissed]);
   const pinned = new Set([...sa.pinned, ...sb.pinned]);
+  const acked = new Set([...sa.acked, ...sb.acked]);
   for (const id of dismissed) pinned.delete(id);
-  return { dismissed: [...dismissed], pinned: [...pinned] };
+  return { dismissed: [...dismissed], pinned: [...pinned], acked: [...acked] };
 }

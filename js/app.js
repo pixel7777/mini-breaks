@@ -6,6 +6,7 @@
 import { drawReading } from './tarot-core.js';
 import {
   normalizeState, partitionItems, togglePin, dismiss, dismissAllUnpinned, mergeState,
+  problemId, ackProblem, unackProblem, partitionProblems,
 } from './news-core.js';
 import { setTaskGroup, groupOptions } from './tasks-core.js';
 
@@ -122,6 +123,9 @@ let state = loadJSON(STATE_KEY, {});
 let ui = loadJSON(UI_KEY, { tab: 'breaks' });
 let isEditing = false;
 let isEditingTopics = false;
+// View-only: whether the cleared "Needs attention" cards are expanded. Not
+// persisted — it resets each visit, which is the calm default.
+let showClearedProblems = false;
 
 function saveConfig() { localStorage.setItem(CONFIG_KEY, JSON.stringify(config)); }
 function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); }
@@ -871,14 +875,27 @@ function renderNews() {
   const problems = (digestDoc && digestDoc.problems) || [];
   const noNews = (digestDoc && digestDoc.noNews) || [];
 
-  if (problems.length) {
+  const { visible: openProblems, cleared: clearedProblems } = partitionProblems(problems, newsStateDoc);
+
+  if (openProblems.length) {
     host.append(el('div', 'news-section-title', 'Needs attention'));
-    problems.forEach(p => {
-      const card = el('div', 'news-card is-problem');
-      card.append(el('div', 'topic-name', p.topic));
-      card.append(el('div', 'instruction', p.instruction));
-      host.append(card);
+    openProblems.forEach(p => host.append(problemCard(p)));
+  }
+
+  if (clearedProblems.length) {
+    const toggle = el('button', 'cleared-toggle',
+      showClearedProblems
+        ? 'Hide cleared'
+        : clearedProblems.length + ' cleared — show');
+    toggle.type = 'button';
+    toggle.addEventListener('click', () => {
+      showClearedProblems = !showClearedProblems;
+      renderNews();
     });
+    host.append(toggle);
+    if (showClearedProblems) {
+      clearedProblems.forEach(p => host.append(problemCard(p, true)));
+    }
   }
 
   const { pinned, normal } = partitionItems(fresh, newsStateDoc);
@@ -929,6 +946,59 @@ function renderNews() {
     untracked.forEach(t => wrap.append(el('span', 'no-news-chip', t.label)));
     host.append(wrap);
   }
+}
+
+// One "Needs attention" card. Two distinct controls, because they are two
+// different acts: × clears the card (the problem may well still be happening —
+// Heidi has decided she doesn't need telling again), 🗑 removes the underlying
+// topic, which is what several of these cards actually ask for.
+function problemCard(p, isCleared = false) {
+  const card = el('div', 'news-card is-problem' + (isCleared ? ' is-cleared' : ''));
+
+  const head = el('div', 'news-card-head');
+  head.append(el('div', 'topic-name', p.topic));
+
+  const controls = el('div', 'news-card-controls');
+
+  if (isCleared) {
+    const restore = el('button', 'icon-btn', '↩');
+    restore.type = 'button';
+    restore.title = 'Bring this back';
+    restore.setAttribute('aria-label', 'Bring this back');
+    restore.addEventListener('click', () => updateNewsState(unackProblem(newsStateDoc, p.id)));
+    controls.append(restore);
+  } else {
+    // Only offered when the card maps to a topic that actually exists — the
+    // agent's own `system-tooling` card has no topic to delete.
+    const topic = ((topicsDoc && topicsDoc.topics) || []).find(t => t.id === p.topicId);
+    if (topic) {
+      const del = el('button', 'icon-btn', '🗑');
+      del.type = 'button';
+      del.title = 'Stop tracking this topic';
+      del.setAttribute('aria-label', 'Stop tracking this topic');
+      del.addEventListener('click', async () => {
+        if (!confirm(`Stop tracking "${topic.label}"?`)) return;
+        topicsDoc.topics = topicsDoc.topics.filter(t => t.id !== topic.id);
+        await saveTopics();
+        // Clear the card too: tonight's digest still lists this problem, and the
+        // card should go now rather than at the next agent run.
+        await updateNewsState(ackProblem(newsStateDoc, p.id));
+      });
+      controls.append(del);
+    }
+
+    const x = el('button', 'icon-btn', '×');
+    x.type = 'button';
+    x.title = 'Clear this card';
+    x.setAttribute('aria-label', 'Clear this card');
+    x.addEventListener('click', () => updateNewsState(ackProblem(newsStateDoc, p.id)));
+    controls.append(x);
+  }
+
+  head.append(controls);
+  card.append(head);
+  card.append(el('div', 'instruction', p.instruction));
+  return card;
 }
 
 // One news/shopping card with pin/unpin and (un-pinned only) dismiss controls.
